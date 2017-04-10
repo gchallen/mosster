@@ -1,1 +1,234 @@
 = `mosster`: Git-friendly Plagiarism Detection
+
+:linkattrs:
+:moss: pass:normal[https://theory.stanford.edu/~aiken/moss/[MOSS]]
+:mosster: pass:normal[https://github.com/gchallen/mosster[`mosster`]]
+:algae: pass:normal[https://github.com/JonathanPierce/Algae/[Algae]]
+:sim: pass:normal[https://dickgrune.com/Programs/similarity_tester/[SIM]]
+
+{mosster} is a re-implementation of existing plagiriasm detection tools like
+
+* {moss} by
+//
+http://theory.stanford.edu/~aiken/[Alex Aiken]
+//
+from
+//
+https://www-cs.stanford.edu/[Stanford]
+//
+* {algae} by
+//
+https://github.com/JonathanPierce[Jonathan Pierce]
+//
+from
+//
+http://www.cs.uiuc.edu/[Illinois]
+//
+* {sim} by
+//
+https://www.dickgrune.com/[Dick Grune]
+
+Why do this?
+//
+For the full answer, <<why,see below>>.
+//
+But briefly: we needed something that would integrate with Git and check multiple
+submissions with large amounts of self-similarity.
+//
+We also were fairly sure that implementing {mosster} in https://golang.org[Go]
+would open up some interesting optimization opportunities and performance
+improvements.
+
+== Features
+
+{mosster} must support the following features:
+
+=== https://git-scm.com/[Git] integration
+
+{mosster} integrates with https://git-scm.com/[Git] to identify objects to
+check.
+//
+{mosster} checks Git commits.
+//
+For each commit, it identifies all of the blobs that are included in the
+commit.
+//
+{mosster} then fingerprints all of the blobs that have not yet been
+fingerprinted, and combines all fingerprints for commit blobs into a
+fingerprint for that commit.
+
+=== Iterative checking
+
+Many existing plagiarism detection tools check all submissions in a single
+pass.
+//
+This is both inefficient and unnecessary when iteratively checking new
+submissions.
+//
+{mosster} should allow new submissions to be checked without repeatedly
+performing computations on existing files that have not changed.
+
+{mosster} maintains a _library_ of commits and blobs that each commit points
+to.
+//
+Each time a commit is added to the library, {mosster} both fingerprints it and
+checks it against all other submissions.
+//
+Even commits that do not need to be checked for plagiarism can be the other
+side of a match against a commit that does need to be checked.
+
+=== Aggressive filtering
+
+Because we are checking all commits, {mosster} anticipates that a great deal
+of any particular commit will be duplicate content from previous commits.
+//
+Duplicated content can take many forms:
+
+* *Entire files*: commits may point to blobs that have already been checked.
+//
+Note that, happily, renaming files doesn't change the Git file blob itself.
+//
+So simple renames that Git can identify don't generate more content to check.
+//
+//
+This filtering should handle these cases:
+//
+** Modifications to one file that leave many others unchanged. Only the
+modified file is checked.
+//
+** Commits that move files but do not change their contents. Files are only
+checked if the contents change.
+//
+* *Entire functions*: even if a file has changed, many of the functions inside
+the file may not have changed.
+//
+This is particularly true when students commit often but commits contain small
+numbers of changes.
+//
+This feature of Git usage is one of the motivation to do function-level
+hashing and fingerprinting.
+//
+In all of the following cases, only modified functions are checked:
+//
+** Modifications isolated to part of a single file, like one function.
+//
+** Modifications that move or rename functions but do not change function
+contents.
+//
+** Purely cosmetic changes to files or functions, including modifying
+comments, altering whitespace, and changing variable or function names.
+//
+* *Matches against provided code*: students may have been provided code by the
+course staff as a starting point.
+//
+Both whole files and functions will be checked against staff-provided code in
+addition to each students previous submissions.
+//
+Any matches with staff-provided code can be ignored.
+
+== Design
+
+=== Library
+
+{mosster} adds submissions to and checks them against a _library_.
+//
+A library should contain all submissions that are being checked against each
+other for plagiarism.
+//
+Staff-provided code or other code that students are allowed to use can also be
+added to the library to perform pre-checking filtering.
+//
+Many of the {mosster} configuration parameters are also configured on a
+per-library basis.
+//
+In particular, all of the content in a library is preprocessed and
+fingerprinted using the same parameters.
+//
+Additional content can be added iteratively to an existing library, but
+library configuration parameters that affect fingerprinting cannot be changed
+once the library is created.
+//
+Reconfiguring the fingerprinting process is equivalent to creating an entire
+new library containing all of the files from the existing library.
+
+=== Inputs
+
+{mosster} should be run from within an existing Git repository.
+//
+It takes one or more commits to check.
+//
+{mosster} requires the following information for each commit:
+
+1. *One or more users that own the commit.*
+//
+Users should be identifier by valid email addresses.
+//
+1. *One or more source code languages for each file in each commit.*
+//
+These are used to determine the language parser to use.
+//
+(Eventually we could incorporate something like
+//
+https://github.com/github/linguist[Linguist]
+//
+to automate this.
+//
+Although it looks like it needs training.)
+
+=== Identifying files to check
+
+{mosster} uses the Go Git bindings to identify all the content associated with
+a single commit.
+//
+Git calls these blobs.
+//
+
+
+[[why]]
+== Why {mosster}?
+
+Given that tools like {moss}, {algae}, and {sim} exist, what is {mosster} for?
+//
+{mosster} tries to address some of the problems or limitations of existing
+tools that we encountered where checking
+//
+https://www.ops-class.org[`ops-class.org`]
+//
+assignments.
+//
+Specifically:
+
+1. After collecting several years of large
+//
+http://os161.eecs.harvard.edu[OS/161]
+//
+assignments, we were uploading enough code to {moss} that it was crashing
+before it completed checking our submission.
+//
+Problems with {moss} were not resolved in a timely manner--at least not timely
+enough for someone with end-of-semester grading deadlines to worry about.
+//
+Despite several requests, Professor Aiken was never willing to provide us with
+a site license. (Although I know that other universities run {moss} locally.)
+//
+1. Unlike {moss}, {mosster} is open source.
+//
+From a transparency perspective, it seems appropriate to check submissions
+using a tool that itself can be checked.
+//
+1. {mosster} borrows many ideas from {algae}.
+//
+We like {algae} and have benefitted greatly from conversations with Jonathan
+Pierce.
+//
+However, we need to extend {algae} in several ways and relax some of its
+assumptions.
+//
+For example, {algae} assumes that students submit once in single files,
+whereas we need to multiple submissions each comprising a complete source
+tree.
+//
+We also need the ability to ignore large amounts of staff-provided code and
+self-similarity between multiple submissions by the same student.
+
+// vim: ft=asciidoc
