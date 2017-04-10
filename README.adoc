@@ -56,8 +56,8 @@ are used to determine whether the files share incriminating features.
 * `foo.c` is _filtered by_ `bar.c`: Fingerprints from `bar.c` are removed from
 fingerprint set for `bar.c`.
 //
-This is done to make the fingerprint for `foo.c` more unique, possibly by
-removing common code that was provided to all students.
+This is done to make the fingerprint for `foo.c` more interesting or unique,
+possibly by removing common code that was provided to all students.
 
 == Features
 
@@ -148,6 +148,44 @@ Any matches with staff-provided code can be ignored.
 
 == Design
 
+=== Overview
+
+1. *Normalization*: all content from a commit is _normalized_ to remove
+features that should not be included in the fingerprint.
+//
+These could include whitespace, certain punctuation, function and variable
+names, or brace placement.
+//
+One way of doing this is generating and normalizing an abstract syntax tree
+(AST) and then serializing it in a compact standardized binary format.
+//
+1. *Fingerprinting*: normalized content is then _fingerprinted_ to extract a
+set of meaningful features.
+//
+One way of doing this is by hashing
+//
+https://en.wikipedia.org/wiki/N-gram[n-grams]
+//
+from the normalized output.
+//
+1. *Filtering*: the set of fingerprints can then be filtered to remove
+fingerprints from other commits.
+//
+This makes the fingerprint set for that commit more unique and interesting,
+and smaller which makes later comparisons faster.
+//
+Filtering can be done using staff-provided code, previous commits by the same
+user, or very common fingerprints that probably result from over-constrained
+problems.
+//
+1. *Comparison*: filtered fingerprint sets are then used to compare multiple
+commits.
+//
+Commits are similar if they share many distinctive fingerprints.
+//
+This argues for weighting individual fingerprints based on their overall
+commonality, while still having an additive metric.
+
 [[library]]
 === Library
 
@@ -177,6 +215,37 @@ The {mosster} library is read-mostly, so an embedded key-value store like
 https://github.com/boltdb/bolt[Bolt]
 //
 is probably sufficient for library persistence.
+
+=== Inputs
+
+{mosster} should be run from within an existing Git repository.
+//
+It takes one or more commits to check.
+//
+{mosster} requires the following information for each commit:
+
+1. *The library to use.*
+//
+This is probably a path to an embedded database file.
+//
+All commits are added to this library and all comparisons are done within this
+library.
+//
+1. *One or more users that own the commit.*
+//
+Users should be identifier by valid email addresses.
+//
+1. *One or more source code languages for each file in each commit.*
+//
+These are used to determine the language parser to use.
+//
+(Eventually we could incorporate something like
+//
+https://github.com/github/linguist[Linguist]
+//
+to automate this.
+//
+Although it looks like it needs training.)
 
 === Identifying commits
 
@@ -311,37 +380,6 @@ each other.
 //
 Note that they are _not_ compared against `foo.c`, `bar.c`, and `new.c` due to
 overlapping ownership.
-
-=== Inputs
-
-{mosster} should be run from within an existing Git repository.
-//
-It takes one or more commits to check.
-//
-{mosster} requires the following information for each commit:
-
-1. *The library to use.*
-//
-This is probably a path to an embedded database file.
-//
-All commits are added to this library and all comparisons are done within this
-library.
-//
-1. *One or more users that own the commit.*
-//
-Users should be identifier by valid email addresses.
-//
-1. *One or more source code languages for each file in each commit.*
-//
-These are used to determine the language parser to use.
-//
-(Eventually we could incorporate something like
-//
-https://github.com/github/linguist[Linguist]
-//
-to automate this.
-//
-Although it looks like it needs training.)
 
 == Library Format
 
