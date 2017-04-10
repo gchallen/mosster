@@ -137,12 +137,12 @@ other for plagiarism.
 //
 Staff-provided code or other code that students are allowed to use can also be
 added to the library to perform pre-checking filtering.
-//
+
 Many of the {mosster} configuration parameters are also configured on a
 per-library basis.
 //
-In particular, all of the content in a library is preprocessed and
-fingerprinted using the same parameters.
+All library content is preprocessed and fingerprinted using the same
+parameters.
 //
 Additional content can be added iteratively to an existing library, but
 library configuration parameters that affect fingerprinting cannot be changed
