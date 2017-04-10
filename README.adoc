@@ -39,6 +39,26 @@ We also were fairly sure that implementing {mosster} in https://golang.org[Go]
 would open up some interesting optimization opportunities and performance
 improvements.
 
+== Terminology
+
+Note that {mosster} fingerprints, compares, and filters entire commits but
+does so function-by-function.
+//
+But it can be convenient in examples to talk about these operations on a
+per-file basis.
+
+* `foo.c` is _fingerprinted_: `foo.c` is converted to a set of fingerprints
+that are used to compare it with other files.
+//
+* `foo.c` is _compared with_ `bar.c`: The fingerprints for `foo.c` and `bar.c`
+are used to determine whether the files share incriminating features.
+//
+* `foo.c` is _filtered by_ `bar.c`: Fingerprints from `bar.c` are removed from
+fingerprint set for `bar.c`.
+//
+This is done to make the fingerprint for `foo.c` more unique, possibly by
+removing common code that was provided to all students.
+
 == Features
 
 {mosster} must support the following features:
@@ -128,6 +148,7 @@ Any matches with staff-provided code can be ignored.
 
 == Design
 
+[[library]]
 === Library
 
 {mosster} adds submissions to and checks them against a _library_.
@@ -151,6 +172,146 @@ once the library is created.
 Reconfiguring the fingerprinting process is equivalent to creating an entire
 new library containing all of the files from the existing library.
 
+The {mosster} library is read-mostly, so an embedded key-value store like
+//
+https://github.com/boltdb/bolt[Bolt]
+//
+is probably sufficient for library persistence.
+
+=== Identifying commits
+
+{mosster} relies on inputs to identify commits.
+//
+This allows the user to label each commit in a way sensitive to their own
+knowledge of how student groups have formed and dissolved.
+
+{mosster} has no way to identify who authored repository content.
+//
+So all users listed when a commit is added assume ownership and access to all
+of the files identified by a particular commit.
+//
+This includes files that students may have created before they began working
+together, since {mosster} assumes that partners or larger groups share
+complete access to each others code.
+
+=== Sharing scenario
+
+Here is an example of a group coming together, then disolving, from the
+perspective of {mosster}.
+
+==== Alice and Bob begin working separately:
+
+[cols=2*,options="header"]
+|===
+|Alice
+|Bob
+
+|Adds and commits `foo.c`
+|Adds and commits `bar.c`
+
+|`$ mosster add . --owners=Alice`
+|`$ mosster add . --owners=Bob`
+
+|===
+
+At this point Alice owns `foo.c` and Bob owns `bar.c`:
+
+```yaml
+foo.c:
+  - Alice
+bar.c:
+  - Bob
+```
+
+Both files are fingerprinted and compared to each other.
+
+==== Alice and Bob start working together sharing Alice's repository.
+
+[cols=2*,options="header"]
+|===
+
+|Alice
+|Bob
+
+|Adds `bar.c` (from Bob) and `new.c` (developed jointly)
+|Shares `bar.c`
+
+|Commits `foo.c`, `bar.c`, and `new.c`
+|
+
+|`$ mosster add . --owners=Alice,Bob`
+|
+
+|===
+
+At this point Alice and Bob share ownership of `foo.c`, `bar.c`, and `new.c`.
+//
+```yaml
+foo.c:
+  - Alice
+  - Bob
+bar.c:
+  - Bob
+  - Alice
+new.c:
+  - Alice
+  - Bob
+```
+//
+`new.c` is fingerprinted and added to the library, but not compared against
+`foo.c` or `bar.c` due to overlapping ownership.
+//
+Ownership for `foo.c` and `bar.c` is adjusted, but the files do not need to be
+fingerprinted again.
+
+Note that Bob has assumed ownership and access to `foo.c` despite the fact
+that it was originally committed and created by Alice.
+//
+{mosster} assumes he has had access to that file and could have saved a copy.
+
+==== Alice and Bob stop working together
+
+[cols=2*,options="header"]
+|===
+|Alice
+|Bob
+
+|Adds `goo.c`
+|Adds `baz.c`
+
+|Commits `goo.c` (new) and `bar.c` (from Bob)
+|Commits `baz.c` (new) and `foo.c` (from Alice)
+
+|`$ mosster add . --owners=Alice`
+|`$ mosster add . --owners=Bob`
+
+|===
+
+At this point Alice and Bob share ownership of `foo.c`, `bar.c`, and `new.c`,
+but retain individual ownership of their new files:
+
+```yaml
+foo.c:
+  - Alice
+  - Bob
+bar.c:
+  - Bob
+  - Alice
+new.c:
+  - Alice
+  - Bob
+goo.c:
+  - Alice
+baz.c
+  - Bob
+```
+
+`goo.c` and `baz.c` are fingerprinted, added to the library, and compared with
+each other.
+//
+Note that they are _not_ compared against `foo.c`, `bar.c`, and `new.c` due to
+overlapping ownership.
+
 === Inputs
 
 {mosster} should be run from within an existing Git repository.
@@ -159,6 +320,13 @@ It takes one or more commits to check.
 //
 {mosster} requires the following information for each commit:
 
+1. *The library to use.*
+//
+This is probably a path to an embedded database file.
+//
+All commits are added to this library and all comparisons are done within this
+library.
+//
 1. *One or more users that own the commit.*
 //
 Users should be identifier by valid email addresses.
@@ -175,14 +343,41 @@ to automate this.
 //
 Although it looks like it needs training.)
 
-=== Identifying files to check
+== Library Format
 
-{mosster} uses the Go Git bindings to identify all the content associated with
-a single commit.
-//
-Git calls these blobs.
-//
+Examples below are shown in YAML format.
 
+=== Commit to user mapping
+
+```yaml
+c408d43a9619778f6d23b9b4d0e4572b3b021c440bab249315c39709c75c412e:
+  - me@me.com
+63d621e805b0a7a8466f8b62b0ad60b60511f66a6a38ec1d9fae3b7969217e24:
+  - me@me.com
+  - you@you.com
+```
+
+* *Written*: as commits are added to the library, user entries are created or
+added to this table.
+//
+* *Used*:
+** New commits _will not be checked_ if they are included in staff commits for
+a particular repository.
+** Commit-level similarity is one aspect of how users are compared.
+
+Given that Git includes a timestamp in the commit ID, even commits of the
+identical content by two different users in different repositories will not
+produce identical commits.
+//
+However, identical commits can occur when a repository is forked from another
+repository.
+//
+Students may be dumb enough to fork their repository from another student or
+group, in which case plagiarism is really obvious.
+//
+But this also allows us to avoid checking commits that came from a staff
+repository, or identical commits from group repositories that have diverged
+slightly.
 
 [[why]]
 == Why {mosster}?
