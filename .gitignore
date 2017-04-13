@@ -1,3 +1,5 @@
 # vim files
 *.swp
 *.swo
+# Vagrant stuff
+/.vagrant
