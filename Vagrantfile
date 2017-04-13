@@ -28,7 +28,10 @@ export DEBIAN_FRONTEND=noninteractive
 # Upgrade apt-get packages, install Java and some basic tools
 apt-get $APT_FLAGS update
 apt-get -qq -o Dpkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" upgrade
-apt-get $APT_FLAGS install tmux bash-completion man vim default-jre
+apt-get $APT_FLAGS install software-properties-common tmux bash-completion man vim default-jre
+add-apt-repository ppa:masterminds/glide
+apt-get $APT_FLAGS update
+apt-get $APT_FLAGS install glide
 
 # Install Go
 GO_VERSION=1.8.1
