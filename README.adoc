@@ -41,20 +41,26 @@ improvements.
 
 == Terminology
 
-Note that {mosster} fingerprints, compares, and filters entire commits but
-does so function-by-function.
+Note that {mosster} normalizes, fingerprints, compares, and filters entire
+commits but does so function-by-function.
 //
 But it can be convenient in examples to talk about these operations on a
 per-file basis.
 
+* `foo.c` is _normalized_: `foo.c` is converted to a compact
+representation that preserves identifying structural features but removes
+names and other non-identifying features.
+//
+This conversion is language-specific.
+//
 * `foo.c` is _fingerprinted_: `foo.c` is converted to a set of fingerprints
 that are used to compare it with other files.
 //
-* `foo.c` is _compared with_ `bar.c`: The fingerprints for `foo.c` and `bar.c`
-are used to determine whether the files share incriminating features.
-//
 * `foo.c` is _filtered by_ `bar.c`: Fingerprints from `bar.c` are removed from
 fingerprint set for `bar.c`.
+//
+* `foo.c` is _compared with_ `bar.c`: The fingerprints for `foo.c` and `bar.c`
+are used to determine whether the files share incriminating features.
 //
 This is done to make the fingerprint for `foo.c` more interesting or unique,
 possibly by removing common code that was provided to all students.
